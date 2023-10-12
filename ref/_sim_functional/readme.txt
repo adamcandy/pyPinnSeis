@@ -1,0 +1,2 @@
+This Python code performs seismic inversions using Physics-Informed Neural Networks (PINNs). This work has been published in Rasht-Behesht et al., 2021.
+The code solves Case 3 from Rasht-Behesht et al., 2021 and uses synthetic training data from Specfem2D (Komatitsch and Tromp, 1999; Tromp et al., 2008) as the initial conditions, observed seismograms and test data. The wave_propagation.mp4 file is a video of the ground truth wave propagation in the medium, simulated via Specfem2D. 

@@ -1,0 +1,28 @@
+TensorFlow 2.0 Upgrade Script
+-----------------------------
+Converted 1 files
+Detected 0 issues that require attention
+--------------------------------------------------------------------------------
+================================================================================
+Detailed log follows:
+
+================================================================================
+--------------------------------------------------------------------------------
+Processing file 'PINNs_Inversion_Acoustic_asc.py'
+ outputting to 'PINNs_Inversion_Acoustic_asc_2_tfupgrade.py'
+--------------------------------------------------------------------------------
+
+20:0: INFO: Renamed 'tf.reset_default_graph' to 'tf.compat.v1.reset_default_graph'
+22:4: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+23:4: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+24:4: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+91:23: INFO: Renamed 'tf.truncated_normal' to 'tf.random.truncated_normal'
+458:17: INFO: Renamed 'tf.train.AdamOptimizer' to 'tf.compat.v1.train.AdamOptimizer'
+476:5: INFO: Renamed 'tf.Session' to 'tf.compat.v1.Session'
+477:15: INFO: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+494:5: INFO: Renamed 'tf.Session' to 'tf.compat.v1.Session'
+495:15: INFO: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+512:5: INFO: Renamed 'tf.Session' to 'tf.compat.v1.Session'
+513:15: INFO: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+--------------------------------------------------------------------------------
+
