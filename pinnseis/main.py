@@ -27,23 +27,16 @@ def main():
     from .options import checkOptions
     from .log import loggingInit, report
     from .trap import isTrapped
-    from .create import Create
+    from .pinn import Pinn
 
     options = checkOptions()
     log = loggingInit(options)
 
-    c = Create(name="test")
-    c.process()
-    c.show()
+    c = Pinn(name="Crosswell")
+    #c.process()
+    #c.show()
 
-    names = ["neko", "inu", "kappa"]
-    for i, name in enumerate(["neko", "inu", "kappa"]):
-        c = Create(name=name)
-        c.addNumbering(index=i + 1, total=len(names))
-        c.process()
-        c.show()
-
-    # report('Complete and closed cleanly')
+    report('Complete and closed cleanly')
 
 
 if __name__ == "__main__":
