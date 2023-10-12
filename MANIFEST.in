@@ -1,0 +1,13 @@
+include AUTHORS
+include COPYING
+include LICENSE
+include Readme.md
+graft pinnseis/resource
+
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.so
+global-exclude *.dylib
+global-exclude .git*
+global-exclude .deps/*
+global-exclude .DS_Store
