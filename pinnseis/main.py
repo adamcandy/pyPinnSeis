@@ -32,7 +32,7 @@ def main():
     options = checkOptions()
     log = loggingInit(options)
 
-    c = Pinn(name="Crosswell")
+    c = Pinn(name="Crosswell Inversion_Acoustic")
     #c.process()
     #c.show()
 
