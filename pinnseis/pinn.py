@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+from os.path import realpath, dirname, join
 import pickle
 import tensorflow as tf
 import numpy as np
@@ -11,7 +12,8 @@ from SALib.sample import sobol_sequence
 import scipy.interpolate as interpolate
 
 from .log import report, debug, warning, error
-from .utility import locate_resource, mkdir_p, camel_case
+from .utility import locate_resource, mkdir_p, camel_case, unique_folder, concise_folder
+from .options import getOptions
 from .parameters import *
 
 #c = Pinn(name="Crosswell Inversion_Acoustic")
@@ -27,6 +29,7 @@ class Pinn:
         self._total = None
         self._outputfolder = None
         self.setName(name)
+        #print(self.short)
         self.setOutputFolder(outputfolder)
 
     def __str__(self):
@@ -35,11 +38,12 @@ class Pinn:
 
     def setOutputFolder(self, outputfolder):
         if outputfolder is None:
-            self._outputfolder = realpath(join(dirname(dirname(realpath(__file__))), "output", self.short))
+            self._outputfolder = unique_folder(realpath(join(dirname(dirname(realpath(__file__))), "output", self.short)))
         else:
             self._outputfolder = outputfolder
         if not os.path.exists(self._outputfolder):
             mkdir_p(self._outputfolder)
+        report("Output folder: {}".format(concise_folder(self._outputfolder)))
 
     def setName(self, name=None, refresh=False):
         """Set the name of this class object"""
@@ -62,10 +66,11 @@ class Pinn:
         """Process this object"""
         report("%(blue)sProcessing%(grey)s: %(yellow)s{}%(end)s".format(self))
 
-        print(self.short)
+        from .neuralnetworks import xavier_init, neural_net, neural_net0
+        from .physics import true_ground_velocity 
+        option = getOptions()
 
-        #### Options
-        show=False
+
 
         #### Tensorflow setup
         tf.compat.v1.disable_eager_execution()
@@ -75,74 +80,21 @@ class Pinn:
         z = tf.compat.v1.placeholder(tf.float64, shape=(None,1))
         t = tf.compat.v1.placeholder(tf.float64, shape=(None,1))
 
+        alpha_true=3-0.25*(1+tf.tanh(100*(1-true_ground_velocity(x*Lx,z*Lz,0.18,0.1,1.0-n_absx*dx,0.3-n_absz*dz))))
 
 
-
-        #Here we define the true ground velocity 
-        def g(x,z,a,b,c,d):
-          return ((x-c)**2/a**2+(z-d)**2/b**2)
-
-        alpha_true=3-0.25*(1+tf.tanh(100*(1-g(x*Lx,z*Lz,0.18,0.1,1.0-n_absx*dx,0.3-n_absz*dz))))
-
-
-
-        ub=np.array([ax/Lx,az/Lz,(t_m-t_st)]).reshape(-1,1).T# normalization of the input to the NN
-        ub0=np.array([ax/Lx,az/Lz]).reshape(-1,1).T#same for the inverse NN estimating the wave_speed 
-
-
-        #### Neural nets
-        def xavier_init(size):
-            in_dim = size[0]
-            out_dim = size[1]        
-            xavier_stddev = np.sqrt(2.0/(in_dim + out_dim))
-            return tf.Variable(tf.random.truncated_normal([in_dim, out_dim], stddev=xavier_stddev,dtype=tf.float64), dtype=tf.float64)
-
-
-        # Neural Network 1
-        def neural_net(X, weights, biases):
-            num_layers = len(weights) + 1    
-            H=2*(X/ub)-1#normalization map to [-1 1]
-            for l in range(0,num_layers-2): 
-                W = weights[l]
-                b = biases[l]
-                H = tf.nn.tanh(tf.add(tf.matmul(H, W), b))
-
-
-            W = weights[-1]
-            b = biases[-1]
-            Y = tf.add(tf.matmul(H, W), b)
-            return Y
-
-        # Neural Network 2
-        def neural_net0(X, weights, biases):
-            num_layers = len(weights) + 1    
-            H=2*(X/ub0)-1
-            for l in range(0,num_layers-2): 
-                W = weights[l]
-                b = biases[l]
-                H = tf.nn.tanh(tf.add(tf.matmul(H, W), b))
-
-
-            W = weights[-1] 
-            b = biases[-1]
-            Y = tf.add(tf.matmul(H, W), b)
-            return Y
 
         layers=[3]+[30]*3+[1] # layers for the NN approximating the scalar acoustic potential
 
         L = len(layers)
         weights = [xavier_init([layers[l], layers[l+1]]) for l in range(0, L-1)]
         biases = [tf.Variable( tf.zeros((1, layers[l+1]),dtype=tf.float64)) for l in range(0, L-1)]
-        num_epoch = 10000001
 
         layers0=[2]+[20]*5+[1] # layers for the second NN to approximate the wavespeed
 
         L0 = len(layers0)
         weights0 = [xavier_init([layers0[l], layers0[l+1]]) for l in range(0, L0-1)]
         biases0 = [tf.Variable( tf.zeros((1, layers0[l+1]),dtype=tf.float64)) for l in range(0, L0-1)]
-
-
-        learning_rate = 1.e-4
 
         alpha_star=tf.tanh(neural_net0(tf.concat((x,z),axis=1), weights0, biases0))
 
@@ -151,7 +103,6 @@ class Pinn:
         z_fi=0.45-n_absz*dz
         x_st=0.7-n_absx*dx
         x_fi=1.25-n_absx*dx
-        lld=1000
         alpha_bound=0.5*(1+tf.tanh(lld*(z-z_st/Lz)))*0.5*(1+tf.tanh(lld*(-z+z_fi/Lz)))*0.5*(1+tf.tanh(lld*(x-x_st/Lx)))*0.5*(1+tf.tanh(lld*(-x+x_fi/Lx)))#confining the inversion to a box and not the whole region
 
         alpha=3+2*alpha_star*alpha_bound
@@ -168,10 +119,7 @@ class Pinn:
         Vel_x=tf.gradients(ux,t)[0]#velocity field
         Vel_z=tf.gradients(uz,t)[0]
 
-        ### PDE residuals
-        batch_size=40000
-        n_pde=batch_size*2000
-        print('batch_size',':',batch_size)
+        report('Batch size: {}'.format(batch_size))
         ## Residual sample coordinates
         # Sobol sequence: uniform distribution in probability space. It is a distribution which appears qualitatively random, but cleverly "fills in" previously unsampled regions of the probability function.
         X_pde = sobol_sequence.sample(n_pde+1, 3)[1:,:]
@@ -191,7 +139,6 @@ class Pinn:
         xz=np.concatenate((X0[:,0:1],X0[:,1:2]),axis=1)
 
 
-        n_ini=40
 
         xx, zz = np.meshgrid(np.linspace(0,ax/Lx,n_ini),np.linspace(0,az/Lz,n_ini))
         xxzz = np.concatenate((xx.reshape((-1,1)), zz.reshape((-1,1))),axis=1)
@@ -207,10 +154,8 @@ class Pinn:
 
 
 
-        u_scl=1/3640 #scaling the output data to cover [-1 1] interval 
 
 
-        import os
 
         #uploading the wavefields from specfem 
         wfs = sorted(os.listdir(locate_resource('event1/wavefields/.')))
@@ -264,7 +209,7 @@ class Pinn:
         plt.colorbar()
         plt.axis('scaled')
         plt.savefig(os.path.join(self._outputfolder, 'Ini_total_disp_spec_sumEvents.png'), dpi=400)
-        if show: plt.show()
+        if option.showplot: plt.show()
         plt.close(fig)
 
 
@@ -276,8 +221,8 @@ class Pinn:
         plt.title('Scaled sec I.C total disp. input specfem t='+str(round(t02, 4)))
         plt.colorbar()
         plt.axis('scaled')
-        plt.savefig(os.path.join(self._outputfolder, 'sec_wavefield_input_spec_sumEvents.png', dpi=400))
-        if show: plt.show()
+        plt.savefig(os.path.join(self._outputfolder, 'sec_wavefield_input_spec_sumEvents.png'), dpi=400)
+        if option.showplot: plt.show()
         plt.close(fig)
 
 
@@ -289,8 +234,8 @@ class Pinn:
         plt.title('Test data: Total displacement specfem t='+str(round((t_la-t01), 4)))
         plt.colorbar()
         plt.axis('scaled')
-        plt.savefig(os.path.join(self._outputfolder, 'total_disp_spec_testData_sumEvents.png', dpi=400))
-        if show: plt.show()
+        plt.savefig(os.path.join(self._outputfolder, 'total_disp_spec_testData_sumEvents.png'), dpi=400)
+        if option.showplot: plt.show()
         plt.close(fig)
         ###############################################################
 
@@ -300,7 +245,6 @@ class Pinn:
         #################input seismograms for the first event
 
 
-        import os
         sms = sorted(os.listdir(locate_resource('event1/seismograms/.')))
         smsz = [f for f in sms if f[-6]=='Z']#Z cmp seismos
         seismo_listz = [np.loadtxt(locate_resource('event1/seismograms/'+f)) for f in smsz]#Z cmp seismos
@@ -376,7 +320,6 @@ class Pinn:
         #################input seismograms for the first event
 
 
-        import os
         sms = sorted(os.listdir(locate_resource('event1/seismograms/.')))
         smsx = [f for f in sms if f[-6]=='X']#X cmp seismos
         seismo_listx = [np.loadtxt(locate_resource('event1/seismograms/'+f)) for f in smsx]#X cmp seismos
@@ -417,8 +360,6 @@ class Pinn:
 
 
         ####  BCs: Free stress on top and no BC for other sides (absorbing)
-        bcxn=100
-        bctn=50
         x_vec = np.random.rand(bcxn,1)*ax/Lx
         t_vec = np.random.rand(bctn,1)*(t_m-t_st)
         xxb, ttb = np.meshgrid(x_vec, t_vec)
@@ -494,8 +435,8 @@ class Pinn:
         plt.colorbar()
         plt.axis('scaled')
         plt.plot(Lx*0.99*X_S[:,0],Lz*X_S[:,1],'r*',markersize=5)
-        plt.savefig(os.path.join(self._outputfolder, 'True_wavespeed.png', dpi=400))
-        if show: plt.show()
+        plt.savefig(os.path.join(self._outputfolder, 'True_wavespeed.png'), dpi=400)
+        if option.showplot: plt.show()
         plt.close(fig)
 
         with tf.compat.v1.Session() as sess:
@@ -511,8 +452,8 @@ class Pinn:
         plt.title(r'Initial guess ($\alpha$)')
         plt.colorbar()
         plt.axis('scaled')
-        plt.savefig(os.path.join(self._outputfolder, 'Ini_guess_wavespeed.png', dpi=400))
-        if show: plt.show()
+        plt.savefig(os.path.join(self._outputfolder, 'Ini_guess_wavespeed.png'), dpi=400)
+        if option.showplot: plt.show()
         plt.close(fig)
 
         bbn=0
@@ -526,12 +467,27 @@ class Pinn:
            
                   if epoch % 200 == 0:
                       stop = timeit.default_timer()
-                      print('Time: ', stop - start)
+                      report('Time: {}'.format(stop - start))
                       loss_val, loss_pde_val, loss_init_disp1_val,loss_init_disp2_val,loss_seism_val,loss_BC_val \
                       = sess.run([loss, loss_pde, loss_init_disp1,loss_init_disp2,loss_seism,loss_BC], feed_dict = feed_dict1)
 
-                      print ('Epoch: ', epoch, ', Loss: ', loss_val, ', Loss_pde: ', loss_pde_val, ', Loss_init_disp1: ', loss_init_disp1_val)
-                      print (', Loss_init_disp2: ', loss_init_disp2_val,'Loss_seism: ', loss_seism_val,'Loss_stress: ', loss_BC_val)
+                      #report('Epoch: ', epoch, ', Loss: ', loss_val, ', Loss_pde: ', loss_pde_val, ', Loss_init_disp1: ', loss_init_disp1_val)
+                      #report(', Loss_init_disp2: ', loss_init_disp2_val,'Loss_seism: ', loss_seism_val,'Loss_stress: ', loss_BC_val)
+
+                      form = "{epoch:>"+str(len(str(num_epoch))+"}: Loss: {loss_val:.4f} LossPDE: {loss_pde_val:.4f} LossInitDisp1: {loss_init_disp1_val:.4f} LossInitDisp2: {loss_init_disp2_val:.4f} Loss_seism: {loss_seism_val:.4f} Loss_stress: {loss_BC_val:.4f}"
+
+                      report(form.format(
+                        epoch = epoch,
+                        loss_val = loss_val,
+                        loss_pde_val = loss_pde_val,
+                        loss_init_disp1_val = loss_init_disp1_val,
+                        loss_init_disp2_val = loss_init_disp2_val,
+                        loss_seism_val = loss_seism_val,
+                        loss_BC_val = loss_BC_val
+                      ))
+                      
+
+
 
                       ux01=sess.run([ux], feed_dict =feed_dict01 )
                       uz01=sess.run([uz], feed_dict =feed_dict01 )
@@ -569,8 +525,8 @@ class Pinn:
                       plt.title(r'PINNs $U(x,z,t=$'+str(0)+r'$)$')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(0)+'.png',dpi=400))
-                      if show: plt.show()
+                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(0)+'.png'), dpi=400)
+                      if option.showplot: plt.show()
                       plt.close(fig)
                       fig = plt.figure()
                       plt.contourf(xx*Lx, zz*Lz, U_PINN02,100, cmap='jet')
@@ -579,8 +535,8 @@ class Pinn:
                       plt.title(r'PINNs $U(x,z,t=$'+str(round(t02-t01, 4))+r'$)$')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(round(t02-t01, 4))+'.png',dpi=400))
-                      if show: plt.show()
+                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(round(t02-t01, 4))+'.png'), dpi=400)
+                      if option.showplot: plt.show()
                       plt.close(fig)
                       fig = plt.figure()
                       plt.contourf(xx*Lx, zz*Lz, U_PINNt,100, cmap='jet')
@@ -589,8 +545,8 @@ class Pinn:
                       plt.title(r'PINNs $U(x,z,t=$'+str(round((t_la-t01), 4))+r'$)$')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(round((t_la-t01), 4))+'.png',dpi=400))
-                      if show: plt.show()
+                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(round((t_la-t01), 4))+'.png'), dpi=400)
+                      if option.showplot: plt.show()
                       plt.close(fig)
                       
                       fig = plt.figure()
@@ -600,8 +556,8 @@ class Pinn:
                       plt.title(r'Total disp. Specfem-PINNs ($t=$'+str(round((t_la-t01), 4))+r'$)$')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'pointwise_Error_spec_minus_PINNs_t='+str(round((t_la-t01), 4))+'.png',dpi=400))
-                      if show: plt.show()
+                      plt.savefig(os.path.join(self._outputfolder, 'pointwise_Error_spec_minus_PINNs_t='+str(round((t_la-t01), 4))+'.png'), dpi=400)
+                      if option.showplot: plt.show()
                       plt.close(fig)
                       
                       fig = plt.figure()
@@ -611,8 +567,8 @@ class Pinn:
                       plt.title(r'Inverted $\alpha$')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'inverted_alpha.png',dpi=400))
-                      if show: plt.show()
+                      plt.savefig(os.path.join(self._outputfolder, 'inverted_alpha.png') ,dpi=400)
+                      if option.showplot: plt.show()
                       plt.close(fig)
                       
                       fig = plt.figure()
@@ -622,8 +578,8 @@ class Pinn:
                       plt.title(r' $\alpha$ misfit (true-inverted)')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'alpha_misfit.png',dpi=400))
-                      if show: plt.show()
+                      plt.savefig(os.path.join(self._outputfolder, 'alpha_misfit.png') ,dpi=400)
+                      if option.showplot: plt.show()
                       plt.close(fig)
 
                       fig = plt.figure()
@@ -637,8 +593,8 @@ class Pinn:
                       plt.xlabel('epoch')
                       plt.ylabel('misfit')
                       plt.legend()
-                      plt.savefig(os.path.join(self._outputfolder, 'misfit.png',dpi=400))
-                      if show: plt.show()
+                      plt.savefig(os.path.join(self._outputfolder, 'misfit.png'), dpi=400)
+                      if option.showplot: plt.show()
                       plt.close(fig)
 
                       
@@ -647,8 +603,8 @@ class Pinn:
                       plt.plot(X_S[600:750,2],uz_seism_pred[0][600:750],'r',label='PINNs')
                       plt.legend()
                       plt.title(r' Vertical Seismogram z='+str(round(az-d_s, 4)))
-                      plt.savefig(os.path.join(self._outputfolder, 'ZSeismograms_compare_z='+str(round(az-d_s, 4))+'.png',dpi=400))
-                      if show: plt.show()
+                      plt.savefig(os.path.join(self._outputfolder, 'ZSeismograms_compare_z='+str(round(az-d_s, 4))+'.png'), dpi=400)
+                      if option.showplot: plt.show()
                       plt.close(fig)
                       
                    
@@ -658,8 +614,8 @@ class Pinn:
                       plt.plot(X_S[600:750,2],ux_seism_pred[0][600:750],'r',label='PINNs')
                       plt.legend()
                       plt.title(r' Horizontal Seismogram z='+str(round(az-d_s, 4)))
-                      plt.savefig(os.path.join(self._outputfolder, 'XSeismograms_compare_z='+str(round(az-d_s, 4))+'.png',dpi=400))
-                      if show: plt.show()
+                      plt.savefig(os.path.join(self._outputfolder, 'XSeismograms_compare_z='+str(round(az-d_s, 4))+'.png'), dpi=400)
+                      if option.showplot: plt.show()
                       plt.close(fig)
                       
                       

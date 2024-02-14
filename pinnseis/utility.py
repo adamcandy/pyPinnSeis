@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from .log import debug, report
+from .log import debug, report, error
 
 _found_fonts = {}
 
@@ -45,12 +45,44 @@ def execute(cmd, wait=True):
         return [0, b""]
 
 def mkdir_p(path):
+    from os import makedirs
     try:
-        os.makedirs(path)
+        makedirs(path)
     except OSError as exc: # Python >2.5
         if exc.errno == errno.EEXIST:
             pass
         else: raise
+
+def unique_folder(folder):
+    from os.path import dirname, join, realpath, expanduser, exists, splitext
+    from re import search
+    if not exists(folder):
+        return folder
+    if folder.endswith("/"):
+        folder = folder[:-1]
+    if not search("_[0-9]*[0-9]$", folder):
+        base = folder
+        number = 0
+    else:
+        parts = folder.split("_")
+        number = parts[-1]
+        base = '_'.join(parts[:-1])
+    while exists(folder):
+        number += 1
+        if number > 100:
+            error("Creation of new unique folder for {} has gone past the max number limit {}".format(base, number), fatal=True)
+        folder = "{}_{}".format(base, number)
+        #print("Repeat:", folder)
+    return folder
+
+def concise_folder(folder):
+    from os.path import expanduser, realpath
+    from re import sub
+    home = realpath(expanduser('~'))
+    current = realpath(".")
+    folder = sub("^"+current, ".", folder)
+    folder = sub("^"+home, "~", folder)
+    return folder
 
 def camel_case(s):
     from re import sub

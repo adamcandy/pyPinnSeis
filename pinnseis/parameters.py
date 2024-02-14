@@ -49,3 +49,24 @@ zl_s=0.06-n_absz*dz# z location of the last seismometer at depth. this doesn't h
 
 Lx=3;#this is for scaling the wavespeed in the PDE via saling x coordinate
 Lz=3;#this is for scaling the wavespeed in the PDE via scaling z coordinate
+
+
+
+
+num_epoch = 10000001
+learning_rate = 1.e-4
+lld=1000
+### PDE residuals
+batch_size=40000
+n_pde=batch_size*2000
+
+
+n_ini=40
+u_scl=1/3640 #scaling the output data to cover [-1 1] interval 
+####  BCs: Free stress on top and no BC for other sides (absorbing)
+bcxn=100
+bctn=50
+
+
+
+
