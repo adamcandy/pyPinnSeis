@@ -16,6 +16,11 @@ class ResourceNotFound(Exception):
 
     pass
 
+class FileNotFound(Exception):
+    """Cleanly handle when a file cannot be found"""
+
+    pass
+
 
 def bytes2human(num, suffix="B"):
     """Convert raw number of bytes to a human-readable form"""
@@ -99,7 +104,7 @@ def locate_resource(filename, extension=None):
         _filename = "{}.{}".format(filename, _extension)
     else:
         _filename = filename
-    resourcefolder = realpath(join(dirname(realpath(__file__)), "resource"))
+    resourcefolder = realpath(join(dirname(realpath(__file__)), "data"))
     # debug('Resource folder: {}'.format(resourcefolder))
 
     if _filename.startswith("/"):

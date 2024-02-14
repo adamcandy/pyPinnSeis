@@ -42,6 +42,7 @@ class Options:
         self.plain = True
         self._plain = False
         self.timestamp = False
+        self.showplot = False
 
         self.read()
         self.validate()
@@ -75,6 +76,8 @@ class Options:
         content = """%(blue)sUsage for %(yellow)s%(cmdname)s%(end)s
  %(cmdname)s [options]
 %(grey)s-- %(blue)sOptions%(grey)s ---\%(end)s 
+              |___________________________________________________________________
+ -showplot    | Show plots
               |___________________________________________________________________
  -v           | Verbose to stdout (--log file, to file; --plain for plain output)
  -q           | Quiet
@@ -113,6 +116,8 @@ class Options:
             elif argument == "--version":
                 self.showVersion()
             # Creation
+            elif argument == "--showplot":
+                self.showplot = True
             # Logging
             elif argument == "-v":
                 self.stdout = True

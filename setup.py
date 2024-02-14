@@ -18,6 +18,13 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     scripts=["bin/pinnseis"],
     include_package_data=True,
+    install_requires=[
+        'numpy',
+        'scipy',
+        'matplotlib',
+        'tensorflow',
+        'SALib'
+    ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
