@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import pickle
 import tensorflow as tf
 import numpy as np
@@ -10,7 +11,7 @@ from SALib.sample import sobol_sequence
 import scipy.interpolate as interpolate
 
 from .log import report, debug, warning, error
-from .utility import locate_resource
+from .utility import locate_resource, mkdir_p, camel_case
 from .parameters import *
 
 #c = Pinn(name="Crosswell Inversion_Acoustic")
@@ -19,16 +20,26 @@ class Pinn:
 
     _default_name = "Default"
 
-    def __init__(self, name=None):
+    def __init__(self, name=None, outputfolder=None):
         """Initiate a new instance of this class object"""
         self._name = None
         self._index = None
         self._total = None
+        self._outputfolder = None
         self.setName(name)
+        self.setOutputFolder(outputfolder)
 
     def __str__(self):
         """Presents the object represented by a string"""
         return "{}".format(self._name)
+
+    def setOutputFolder(self, outputfolder):
+        if outputfolder is None:
+            self._outputfolder = realpath(join(dirname(dirname(realpath(__file__))), "output", self.short))
+        else:
+            self._outputfolder = outputfolder
+        if not os.path.exists(self._outputfolder):
+            mkdir_p(self._outputfolder)
 
     def setName(self, name=None, refresh=False):
         """Set the name of this class object"""
@@ -39,6 +50,10 @@ class Pinn:
                 self._name = _default_name
         return self._name
 
+    @property
+    def short(self):
+        return camel_case(self._name)
+
     def show(self):
         """Show the current state of this class object"""
         report("{}".format(self))
@@ -47,7 +62,7 @@ class Pinn:
         """Process this object"""
         report("%(blue)sProcessing%(grey)s: %(yellow)s{}%(end)s".format(self))
 
-
+        print(self.short)
 
         #### Options
         show=False
@@ -248,7 +263,7 @@ class Pinn:
         plt.title('Scaled I.C total disp. input specfem t='+str(t01))
         plt.colorbar()
         plt.axis('scaled')
-        plt.savefig('Ini_total_disp_spec_sumEvents.png', dpi=400)
+        plt.savefig(os.path.join(self._outputfolder, 'Ini_total_disp_spec_sumEvents.png'), dpi=400)
         if show: plt.show()
         plt.close(fig)
 
@@ -261,7 +276,7 @@ class Pinn:
         plt.title('Scaled sec I.C total disp. input specfem t='+str(round(t02, 4)))
         plt.colorbar()
         plt.axis('scaled')
-        plt.savefig('sec_wavefield_input_spec_sumEvents.png', dpi=400)
+        plt.savefig(os.path.join(self._outputfolder, 'sec_wavefield_input_spec_sumEvents.png', dpi=400))
         if show: plt.show()
         plt.close(fig)
 
@@ -274,7 +289,7 @@ class Pinn:
         plt.title('Test data: Total displacement specfem t='+str(round((t_la-t01), 4)))
         plt.colorbar()
         plt.axis('scaled')
-        plt.savefig('total_disp_spec_testData_sumEvents.png', dpi=400)
+        plt.savefig(os.path.join(self._outputfolder, 'total_disp_spec_testData_sumEvents.png', dpi=400))
         if show: plt.show()
         plt.close(fig)
         ###############################################################
@@ -479,7 +494,7 @@ class Pinn:
         plt.colorbar()
         plt.axis('scaled')
         plt.plot(Lx*0.99*X_S[:,0],Lz*X_S[:,1],'r*',markersize=5)
-        plt.savefig('True_wavespeed.png', dpi=400)
+        plt.savefig(os.path.join(self._outputfolder, 'True_wavespeed.png', dpi=400))
         if show: plt.show()
         plt.close(fig)
 
@@ -496,7 +511,7 @@ class Pinn:
         plt.title(r'Initial guess ($\alpha$)')
         plt.colorbar()
         plt.axis('scaled')
-        plt.savefig('Ini_guess_wavespeed.png', dpi=400)
+        plt.savefig(os.path.join(self._outputfolder, 'Ini_guess_wavespeed.png', dpi=400))
         if show: plt.show()
         plt.close(fig)
 
@@ -554,7 +569,7 @@ class Pinn:
                       plt.title(r'PINNs $U(x,z,t=$'+str(0)+r'$)$')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig('Total_Predicted_dispfield_t='+str(0)+'.png',dpi=400)
+                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(0)+'.png',dpi=400))
                       if show: plt.show()
                       plt.close(fig)
                       fig = plt.figure()
@@ -564,7 +579,7 @@ class Pinn:
                       plt.title(r'PINNs $U(x,z,t=$'+str(round(t02-t01, 4))+r'$)$')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig('Total_Predicted_dispfield_t='+str(round(t02-t01, 4))+'.png',dpi=400)
+                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(round(t02-t01, 4))+'.png',dpi=400))
                       if show: plt.show()
                       plt.close(fig)
                       fig = plt.figure()
@@ -574,7 +589,7 @@ class Pinn:
                       plt.title(r'PINNs $U(x,z,t=$'+str(round((t_la-t01), 4))+r'$)$')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig('Total_Predicted_dispfield_t='+str(round((t_la-t01), 4))+'.png',dpi=400)
+                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(round((t_la-t01), 4))+'.png',dpi=400))
                       if show: plt.show()
                       plt.close(fig)
                       
@@ -585,7 +600,7 @@ class Pinn:
                       plt.title(r'Total disp. Specfem-PINNs ($t=$'+str(round((t_la-t01), 4))+r'$)$')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig('pointwise_Error_spec_minus_PINNs_t='+str(round((t_la-t01), 4))+'.png',dpi=400)
+                      plt.savefig(os.path.join(self._outputfolder, 'pointwise_Error_spec_minus_PINNs_t='+str(round((t_la-t01), 4))+'.png',dpi=400))
                       if show: plt.show()
                       plt.close(fig)
                       
@@ -596,7 +611,7 @@ class Pinn:
                       plt.title(r'Inverted $\alpha$')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig('inverted_alpha.png',dpi=400)
+                      plt.savefig(os.path.join(self._outputfolder, 'inverted_alpha.png',dpi=400))
                       if show: plt.show()
                       plt.close(fig)
                       
@@ -607,7 +622,7 @@ class Pinn:
                       plt.title(r' $\alpha$ misfit (true-inverted)')
                       plt.colorbar()
                       plt.axis('scaled')
-                      plt.savefig('alpha_misfit.png',dpi=400)
+                      plt.savefig(os.path.join(self._outputfolder, 'alpha_misfit.png',dpi=400))
                       if show: plt.show()
                       plt.close(fig)
 
@@ -622,7 +637,7 @@ class Pinn:
                       plt.xlabel('epoch')
                       plt.ylabel('misfit')
                       plt.legend()
-                      plt.savefig('misfit.png',dpi=400)
+                      plt.savefig(os.path.join(self._outputfolder, 'misfit.png',dpi=400))
                       if show: plt.show()
                       plt.close(fig)
 
@@ -632,7 +647,7 @@ class Pinn:
                       plt.plot(X_S[600:750,2],uz_seism_pred[0][600:750],'r',label='PINNs')
                       plt.legend()
                       plt.title(r' Vertical Seismogram z='+str(round(az-d_s, 4)))
-                      plt.savefig('ZSeismograms_compare_z='+str(round(az-d_s, 4))+'.png',dpi=400)
+                      plt.savefig(os.path.join(self._outputfolder, 'ZSeismograms_compare_z='+str(round(az-d_s, 4))+'.png',dpi=400))
                       if show: plt.show()
                       plt.close(fig)
                       
@@ -643,7 +658,7 @@ class Pinn:
                       plt.plot(X_S[600:750,2],ux_seism_pred[0][600:750],'r',label='PINNs')
                       plt.legend()
                       plt.title(r' Horizontal Seismogram z='+str(round(az-d_s, 4)))
-                      plt.savefig('XSeismograms_compare_z='+str(round(az-d_s, 4))+'.png',dpi=400)
+                      plt.savefig(os.path.join(self._outputfolder, 'XSeismograms_compare_z='+str(round(az-d_s, 4))+'.png',dpi=400))
                       if show: plt.show()
                       plt.close(fig)
                       

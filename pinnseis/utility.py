@@ -44,6 +44,21 @@ def execute(cmd, wait=True):
         s = Popen(cmd, shell=True, stdin=None, stdout=None, stderr=None, close_fds=True)
         return [0, b""]
 
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc: # Python >2.5
+        if exc.errno == errno.EEXIST:
+            pass
+        else: raise
+
+def camel_case(s):
+    from re import sub
+    # Use regular expression substitution to replace underscores and hyphens with spaces,
+    # then title case the string (capitalize the first letter of each word), and remove spaces
+    s = sub(r"(_|-)+", " ", s).title().replace(" ", "")
+    # Join the string, ensuring the first letter is lowercase
+    return ''.join([s[0].lower(), s[1:]])
 
 def fontname_filter(name):
     """Filter for consistently simplifying font names"""
