@@ -11,7 +11,7 @@ pyPinnSeis: Library created with the boilerplate machine, for pyPinnSeis.
 """
 
 __author__ = "Dr Adam S. Candy"
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 __license__ = "LGPLv3"
 __copyright__ = "Copyright 2020"
 __credits__ = ["Dr Adam S. Candy"]
