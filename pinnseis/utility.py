@@ -44,15 +44,6 @@ def execute(cmd, wait=True):
         s = Popen(cmd, shell=True, stdin=None, stdout=None, stderr=None, close_fds=True)
         return [0, b""]
 
-def mkdir_p(path):
-    from os import makedirs
-    try:
-        makedirs(path)
-    except OSError as exc: # Python >2.5
-        if exc.errno == errno.EEXIST:
-            pass
-        else: raise
-
 def unique_folder(folder):
     from os.path import dirname, join, realpath, expanduser, exists, splitext
     from re import search

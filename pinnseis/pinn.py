@@ -12,7 +12,7 @@ from SALib.sample import sobol_sequence
 import scipy.interpolate as interpolate
 
 from .log import report, debug, warning, error
-from .utility import locate_resource, mkdir_p, camel_case, unique_folder, concise_folder
+from .utility import locate_resource, camel_case, unique_folder, concise_folder
 from .options import getOptions
 from .parameters import *
 
@@ -42,7 +42,7 @@ class Pinn:
         else:
             self._outputfolder = outputfolder
         if not os.path.exists(self._outputfolder):
-            mkdir_p(self._outputfolder)
+            os.makedirs(self._outputfolder, exist_ok = True)
         report("Output folder: {}".format(concise_folder(self._outputfolder)))
 
     def setName(self, name=None, refresh=False):
@@ -467,16 +467,16 @@ class Pinn:
            
                   if epoch % 200 == 0:
                       stop = timeit.default_timer()
-                      report('Time: {}'.format(stop - start))
                       loss_val, loss_pde_val, loss_init_disp1_val,loss_init_disp2_val,loss_seism_val,loss_BC_val \
                       = sess.run([loss, loss_pde, loss_init_disp1,loss_init_disp2,loss_seism,loss_BC], feed_dict = feed_dict1)
 
                       #report('Epoch: ', epoch, ', Loss: ', loss_val, ', Loss_pde: ', loss_pde_val, ', Loss_init_disp1: ', loss_init_disp1_val)
                       #report(', Loss_init_disp2: ', loss_init_disp2_val,'Loss_seism: ', loss_seism_val,'Loss_stress: ', loss_BC_val)
 
-                      form = "{epoch:>"+str(len(str(num_epoch))+"}: Loss: {loss_val:.4f} LossPDE: {loss_pde_val:.4f} LossInitDisp1: {loss_init_disp1_val:.4f} LossInitDisp2: {loss_init_disp2_val:.4f} Loss_seism: {loss_seism_val:.4f} Loss_stress: {loss_BC_val:.4f}"
+                      form = "{epoch:>"+str(len(str(num_epoch)))+"}: Loss: {loss_val:.4f} LossPDE: {loss_pde_val:.4f} LossInitDisp1: {loss_init_disp1_val:.4f} LossInitDisp2: {loss_init_disp2_val:.4f} Loss_seism: {loss_seism_val:.4f} Loss_stress: {loss_BC_val:.4f} [{time:.0f}s]"
 
                       report(form.format(
+                        time = stop - start,
                         epoch = epoch,
                         loss_val = loss_val,
                         loss_pde_val = loss_pde_val,

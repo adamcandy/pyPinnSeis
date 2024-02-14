@@ -127,6 +127,8 @@ class Options:
                 self._plain = True
             elif argument == "--debug":
                 self.debug = True
+            elif argument == "-l":
+                self.logfile = logfile_default_setup()
             elif argument == "--log":
                 self.logfile = args.pop(0).rstrip()
             elif argument == "--logd":
@@ -151,3 +153,17 @@ class Options:
         # if len(self.data) == 0:
         #    raise OptionsError('No project name provided')
         return True
+
+def logfile_default_setup():
+    from os.path import realpath, dirname, join
+    from os import makedirs
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    #self.logfile = "pinnseis-{}.log".format(timestamp)
+    logfile = realpath(join(dirname(dirname(realpath(__file__))), "output", "log",
+        "pinnseis-{}.log".format(timestamp)))
+    makedirs(dirname(logfile), exist_ok = True)
+    return logfile
+
+
+        

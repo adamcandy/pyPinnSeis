@@ -203,7 +203,9 @@ def loggingInit(options):
     # log.info('\n\n* ' + '-' * 15 + ' Start up ' + '-' * 40)
     log.debug("Log enabled with debugging messages")
     if options.logfile:
-        log.info("Logging to file enabled, to: {}".format(options.logfile))
+        from .utility import concise_folder
+        # TODO shorten path using utility.concise_folder
+        log.info("Logging to file enabled, to: {}".format(concise_folder(options.logfile)))
     if options.logfiledebug:
         log.info(
             "Logging debug messages to file enabled, to: {}".format(
