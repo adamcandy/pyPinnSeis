@@ -625,7 +625,7 @@ class Pinn:
                       b_f=sess.run(biases)#saving biases 
                       w_alph=sess.run(weights0)#saving weights for the inverse NN
                       b_alph=sess.run(biases0)
-                      with open('recorded_weights.pickle', 'wb') as f:
+                      with open(os.path.join(self._outputfolder, 'recorded_weights.pickle'), 'wb') as f:
                            pickle.dump(['The first tensor contains weights, the second biases and the third losses',w_f,b_f,w_alph,b_alph,loss_rec], f)
 
 
