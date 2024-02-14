@@ -80,6 +80,7 @@ class Options:
  -showplot    | Show plots
               |___________________________________________________________________
  -v           | Verbose to stdout (--log file, to file; --plain for plain output)
+ -l           | Log to file, as --log ./output/log/pinnseis-(timestamp).log 
  -q           | Quiet
  -h           | Display help
  --debug      | Debugging messages (--logd file, to file & enforce --debug)
