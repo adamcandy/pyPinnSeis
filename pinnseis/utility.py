@@ -89,22 +89,23 @@ def find_font_path(name):
         raise FontNotFound("{}, with short key {}".format(name, key_request))
 
 
-def locate_resource(filename, extension=None):
+def locate_resource(filename):
     """Search for a resource file and return its fullpath"""
     from os.path import dirname, join, realpath, expanduser, exists, splitext
 
-    _default_extension = "png"
-    if extension is None:
-        _extension = _default_extension
-    else:
-        _extension = extension
-    base, ext = splitext(filename)
+    # _default_extension = "png"
+    # if extension is None:
+    #     _extension = _default_extension
+    # else:
+    #     _extension = extension
+    # base, ext = splitext(filename)
 
-    if len(ext) == 0:
-        _filename = "{}.{}".format(filename, _extension)
-    else:
-        _filename = filename
-    resourcefolder = realpath(join(dirname(realpath(__file__)), "data"))
+    # if len(ext) == 0:
+    #     _filename = "{}.{}".format(filename, _extension)
+    # else:
+    #     _filename = filename
+    _filename = filename
+    resourcefolder = realpath(join(dirname(dirname(realpath(__file__))), "data"))
     # debug('Resource folder: {}'.format(resourcefolder))
 
     if _filename.startswith("/"):

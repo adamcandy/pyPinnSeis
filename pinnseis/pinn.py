@@ -10,6 +10,7 @@ from SALib.sample import sobol_sequence
 import scipy.interpolate as interpolate
 
 from .log import report, debug, warning, error
+from .utility import locate_resource
 from .parameters import *
 
 #c = Pinn(name="Crosswell Inversion_Acoustic")
@@ -166,7 +167,8 @@ class Pinn:
 
 
         ###initial conditions for all events
-        X0=np.loadtxt('event1/wavefields/wavefield_grid_for_dumps_000.txt')# coordinates on which the wavefield output is recorded on specfem. It's the same for all the runs with the same meshing system in specfem
+        X0=np.loadtxt(locate_resource('event1/wavefields/wavefield_grid_for_dumps_000.txt'))# coordinates on which the wavefield output is recorded on specfem. It's the same for all the runs with the same meshing system in specfem
+
 
         X0=X0/1000#specfem works with meters unit so we need to convert them to Km
         X0[:,0:1]=X0[:,0:1]/Lx#scaling the spatial domain
@@ -196,8 +198,8 @@ class Pinn:
         import os
 
         #uploading the wavefields from specfem 
-        wfs = sorted(os.listdir('event1/wavefields/.'))
-        U0 = [np.loadtxt('event1/wavefields/'+f) for f in wfs]
+        wfs = sorted(os.listdir(locate_resource('event1/wavefields/.')))
+        U0 = [np.loadtxt(locate_resource('event1/wavefields/'+f)) for f in wfs]
 
         U_ini1 = interpolate.griddata(xz, U0[0], xxzzs, fill_value=0.0)
         U_ini1x=U_ini1[:,0:1]/u_scl
@@ -219,8 +221,8 @@ class Pinn:
         #the first event's data has been uploaded above and below
         #the rest of the n-1 events will be added
         for ii in range(n_event-1):
-            wfs = sorted(os.listdir('event'+str(ii+2)+'/wavefields/.'))
-            U0 = [np.loadtxt('event'+str(ii+2)+'/wavefields/'+f) for f in wfs]
+            wfs = sorted(os.listdir(locate_resource('event'+str(ii+2)+'/wavefields/.')))
+            U0 = [np.loadtxt(locate_resource('event'+str(ii+2)+'/wavefields/'+f)) for f in wfs]
 
             U_ini1 = interpolate.griddata(xz, U0[0], xxzzs, fill_value=0.0)
             U_ini1x +=U_ini1[:,0:1]/u_scl
@@ -284,9 +286,9 @@ class Pinn:
 
 
         import os
-        sms = sorted(os.listdir('event1/seismograms/.'))
+        sms = sorted(os.listdir(locate_resource('event1/seismograms/.')))
         smsz = [f for f in sms if f[-6]=='Z']#Z cmp seismos
-        seismo_listz = [np.loadtxt('event1/seismograms/'+f) for f in smsz]#Z cmp seismos
+        seismo_listz = [np.loadtxt(locate_resource('event1/seismograms/'+f)) for f in smsz]#Z cmp seismos
 
         t_spec=-seismo_listz[0][0,0]+seismo_listz[0][:,0]#specfem's time doesn't start from zero for the seismos, so we shift it forward to zero
         cut_u=t_spec>t_s#here we include only part of the seismograms from specfem that are within PINNs' training time domain which is [t_st t_m]
@@ -321,9 +323,9 @@ class Pinn:
         #######input seismograms for the rest of the events added to the first event
             
         for ii in range(n_event-1):
-            sms = sorted(os.listdir('event'+str(ii+2)+'/seismograms/.'))
+            sms = sorted(os.listdir(locate_resource('event'+str(ii+2)+'/seismograms/.')))
             smsz = [f for f in sms if f[-6]=='Z']#Z cmp seismos
-            seismo_listz = [np.loadtxt('event'+str(ii+2)+'/seismograms/'+f) for f in smsz]
+            seismo_listz = [np.loadtxt(locate_resource('event'+str(ii+2)+'/seismograms/'+f)) for f in smsz]
             
             for jj in range(len(seismo_listz)):
                 seismo_listz[jj]=seismo_listz[jj][index]
@@ -360,9 +362,9 @@ class Pinn:
 
 
         import os
-        sms = sorted(os.listdir('event1/seismograms/.'))
+        sms = sorted(os.listdir(locate_resource('event1/seismograms/.')))
         smsx = [f for f in sms if f[-6]=='X']#X cmp seismos
-        seismo_listx = [np.loadtxt('event1/seismograms/'+f) for f in smsx]#X cmp seismos
+        seismo_listx = [np.loadtxt(locate_resource('event1/seismograms/'+f)) for f in smsx]#X cmp seismos
 
 
         for ii in range(len(seismo_listx)):
@@ -378,9 +380,9 @@ class Pinn:
         #######input seismograms for the rest of the events added to the first event
             
         for ii in range(n_event-1):
-            sms = sorted(os.listdir('event'+str(ii+2)+'/seismograms/.'))
+            sms = sorted(os.listdir(locate_resource('event'+str(ii+2)+'/seismograms/.')))
             smsx = [f for f in sms if f[-6]=='X']#X cmp seismos
-            seismo_listx = [np.loadtxt('event'+str(ii+2)+'/seismograms/'+f) for f in smsx]
+            seismo_listx = [np.loadtxt(locate_resource('event'+str(ii+2)+'/seismograms/'+f)) for f in smsx]
             
             for jj in range(len(seismo_listx)):
                 seismo_listx[jj]=seismo_listx[jj][index]
