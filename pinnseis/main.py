@@ -2,10 +2,10 @@
 """
 pyPinnSeis: Library created with the boilerplate machine, for pyPinnSeis. 
 
-#This code uses Physics-Informed Neural Networks PINNs (Raissi et al., 2019) to solve the inverse 
-#acoustic problem for an elliposidal low velocity anomaly in the domain with a point source (Synthetic Crosswell). 
-#See Case study 3 from our paper Rasht-Behesht et al., 2021 for a full description of all parameters involved 
-#Note we use input data from SPECFEM2D (Komatitsch  and  Tromp,  1999;  Tromp  et  al.,  2008) for training the PINN 
+# This code uses Physics-Informed Neural Networks PINNs (Raissi et al., 2019) to solve the inverse 
+# acoustic problem for an elliposidal low velocity anomaly in the domain with a point source (Synthetic Crosswell). 
+# See Case study 3 from Rasht-Behesht et al., 2021 for a full description of all parameters involved 
+# Input data from SPECFEM2D (Komatitsch  and  Tromp,  1999;  Tromp  et  al.,  2008) for training the PINN 
 
 # python -m pip install numpy scipy matplotlib tensorflow SALib
 """
@@ -40,7 +40,7 @@ def main():
     log = loggingInit(options)
 
     c = Pinn(name="Crosswell Inversion Acoustic")
-    c.process()
+    c.process(num_epoch=20, batch_size=400)
     c.show()
 
     report('Complete and closed cleanly')

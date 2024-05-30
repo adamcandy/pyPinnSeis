@@ -3,7 +3,7 @@
 from .log import debug, report, error
 
 _found_fonts = {}
-
+_timers = {}
 
 class FontNotFound(Exception):
     """Cleanly report that a font cannot be found on the system"""
@@ -30,6 +30,14 @@ def bytes2human(num, suffix="B"):
         num /= 1024.0
     return "%.1f%s%s" % (num, "Yi", suffix)
 
+def duration(name="main"):
+    import timeit
+    if name not in _timers.keys():
+        _timers[name] = timeit.default_timer()
+        t = _timers[name]
+    else:
+        t = timeit.default_timer() - _timers[name]
+    return t
 
 def execute(cmd, wait=True):
     from subprocess import Popen, PIPE, DEVNULL

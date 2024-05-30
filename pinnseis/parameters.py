@@ -3,6 +3,9 @@
 
 #### Parameters
 ### Physical
+rho=1.0
+
+### Dimensions
 nx=100#number of nodes along x axis. used here to remove the specfem's absorbing regions from PINN's computational domain
 nz=100
 
@@ -17,11 +20,13 @@ xsf=1.3#x location of all the seismometers in specfem
 
 dx=ax_spec/nx
 dz=az_spec/nz
-rho=1.0
-ax=xsf-n_absx*dx#dimension of the domain in the x direction for PINNs training. Note
+
+ax = xsf - n_absx * dx #dimension of the domain in the x direction for PINNs training. Note
 #we just need to remove the thickness of the absorbing B.C on the left since 
 #xsf is (must be) smaller than where the right side absorbing B.C starts 
 az=az_spec-n_absz*dz#dimension of the domain in the z direction
+
+#### Timings ####################################
 t_m=0.5#total time for PDE training.
 t_st=0.1#this is when we take the first I.C from specfem
 t_s=0.5#total time series used from the seismograms
@@ -33,7 +38,7 @@ t_la=5000*s_spec# test data for comparing specfem and trained PINNs
 
 
 
-n_event=1# number of seismic events
+#### Seismics ###################################
 n_seis=20#number of input seismometers from SPECFEM; if events have different 
 #numbers of seismometers, you have to change the lines containing n_seis accordingly
 z0_s=az# z location of the first seismometer from SPECFEM in PINN's refrence frame.Here it must
@@ -52,13 +57,14 @@ Lz=3;#this is for scaling the wavespeed in the PDE via scaling z coordinate
 
 
 
+class default:
+    num_epoch = 10000001
+    update_interval = 200
+    batch_size = 40000
 
-num_epoch = 10000001
 learning_rate = 1.e-4
 lld=1000
 ### PDE residuals
-batch_size=40000
-n_pde=batch_size*2000
 
 
 n_ini=40

@@ -7,12 +7,11 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-import timeit
 from SALib.sample import sobol_sequence
 import scipy.interpolate as interpolate
 
 from .log import report, debug, warning, error
-from .utility import locate_resource, camel_case, unique_folder, concise_folder
+from .utility import locate_resource, camel_case, unique_folder, concise_folder, duration
 from .options import getOptions
 from .parameters import *
 
@@ -28,6 +27,10 @@ class Pinn:
         self._index = None
         self._total = None
         self._outputfolder = None
+        self.num_epoch = default.num_epoch
+        self.update_interval = default.update_interval
+        self.batch_size = default.batch_size
+        self.print_epoch_increment = True
         self.setName(name)
         #print(self.short)
         self.setOutputFolder(outputfolder)
@@ -62,27 +65,56 @@ class Pinn:
         """Show the current state of this class object"""
         report("{}".format(self))
 
-    def process(self, show=False):
-        """Process this object"""
+    def process(self, show=False, num_epoch=None, update_interval=None, batch_size=None):
+        """Process this object
+This code uses Physics-Informed Neural Networks PINNs (Raissi et al., 2019) to solve the inverse 
+acoustic problem for an elliposidal low velocity anomaly in the domain with a point source (Synthetic Crosswell). 
+See Case study 3 from Rasht-Behesht et al., 2021 for a full description of all parameters involved 
+Input data from SPECFEM2D (Komatitsch  and  Tromp,  1999;  Tromp  et  al.,  2008) for training the PINN 
+"""
         report("%(blue)sProcessing%(grey)s: %(yellow)s{}%(end)s".format(self))
 
         from .neuralnetworks import xavier_init, neural_net, neural_net0
         from .physics import true_ground_velocity 
         option = getOptions()
+    
+        if not num_epoch:
+            num_epoch = self.num_epoch
 
+        if not update_interval:
+            update_interval = self.update_interval
 
+        if not batch_size:
+            batch_size = self.batch_size
+
+        duration()
 
         #### Tensorflow setup
         tf.compat.v1.disable_eager_execution()
         tf.compat.v1.reset_default_graph()    
+        tf.config.experimental.disable_mlir_bridge()
 
         x = tf.compat.v1.placeholder(tf.float64, shape=(None,1))
         z = tf.compat.v1.placeholder(tf.float64, shape=(None,1))
         t = tf.compat.v1.placeholder(tf.float64, shape=(None,1))
 
-        alpha_true=3-0.25*(1+tf.tanh(100*(1-true_ground_velocity(x*Lx,z*Lz,0.18,0.1,1.0-n_absx*dx,0.3-n_absz*dz))))
-
-
+        alpha_true = 3 \
+            - 0.25 * ( \
+                1 + \
+                tf.tanh( \
+                    100 * ( \
+                        1 \
+                        - true_ground_velocity(
+                            x*Lx,
+                            z*Lz,
+                            0.18, # scaling
+                            0.1,  # scaling
+                            1.0 - n_absx * dx, # relative
+                            0.3 - n_absz * dz  # relative
+                        )
+                    )
+                )
+            )
 
         layers=[3]+[30]*3+[1] # layers for the NN approximating the scalar acoustic potential
 
@@ -96,7 +128,7 @@ class Pinn:
         weights0 = [xavier_init([layers0[l], layers0[l+1]]) for l in range(0, L0-1)]
         biases0 = [tf.Variable( tf.zeros((1, layers0[l+1]),dtype=tf.float64)) for l in range(0, L0-1)]
 
-        alpha_star=tf.tanh(neural_net0(tf.concat((x,z),axis=1), weights0, biases0))
+        alpha_star = tf.tanh(neural_net0(tf.concat((x,z),axis=1), weights0, biases0))
 
         #Choose the box within which you are doing the inversion
         z_st=0.1-n_absz*dz#We are removing the absorbing layer from z_st to make it with reference to PINN's coordinate
@@ -122,6 +154,8 @@ class Pinn:
         report('Batch size: {}'.format(batch_size))
         ## Residual sample coordinates
         # Sobol sequence: uniform distribution in probability space. It is a distribution which appears qualitatively random, but cleverly "fills in" previously unsampled regions of the probability function.
+
+        n_pde = batch_size * 2000
         X_pde = sobol_sequence.sample(n_pde+1, 3)[1:,:]
         X_pde[:,0] = X_pde[:,0] * ax/Lx
         X_pde[:,1] = X_pde[:,1] * az/Lz
@@ -173,31 +207,6 @@ class Pinn:
         U_spec = interpolate.griddata(xz, U0[2], xxzzs, fill_value=0.0)#Test data
         U_specx=U_spec[:,0:1]/u_scl
         U_specz=U_spec[:,1:2]/u_scl
-
-
-
-
-
-        #the first event's data has been uploaded above and below
-        #the rest of the n-1 events will be added
-        for ii in range(n_event-1):
-            wfs = sorted(os.listdir(locate_resource('event'+str(ii+2)+'/wavefields/.')))
-            U0 = [np.loadtxt(locate_resource('event'+str(ii+2)+'/wavefields/'+f)) for f in wfs]
-
-            U_ini1 = interpolate.griddata(xz, U0[0], xxzzs, fill_value=0.0)
-            U_ini1x +=U_ini1[:,0:1]/u_scl
-            U_ini1z +=U_ini1[:,1:2]/u_scl
-
-
-            U_ini2 = interpolate.griddata(xz, U0[1], xxzzs, fill_value=0.0)
-            U_ini2x +=U_ini2[:,0:1]/u_scl
-            U_ini2z +=U_ini2[:,1:2]/u_scl
-
-            U_spec = interpolate.griddata(xz, U0[2], xxzzs, fill_value=0.0)
-            U_specx +=U_spec[:,0:1]/u_scl
-            U_specz +=U_spec[:,1:2]/u_scl
-        #U_ini=U_ini.reshape(-1,1)
-
 
 
         ################### plots of inputs for sum of the events
@@ -255,9 +264,6 @@ class Pinn:
         l_su=len(cut_u)-sum(cut_u)#this is the index of the time axis in specfem after which t>t_m
         l_sl=sum(cut_l)
 
-
-
-
         l_f=100#subsampling seismograms from specfem
         index = np.arange(l_sl,l_su,l_f) #subsampling every l_s time steps from specfem in the training interval
         l_sub=len(index)
@@ -265,37 +271,12 @@ class Pinn:
 
         t_spec_sub=t_spec_sub-t_spec_sub[0]#shifting the time axis back to zero. length of t_spec_sub must be equal to t_m-t_st
 
-
-
-
         for ii in range(len(seismo_listz)):
             seismo_listz[ii]=seismo_listz[ii][index]
-
-
 
         Sz=seismo_listz[0][:,1].reshape(-1,1)
         for ii in range(len(seismo_listz)-1):
             Sz=np.concatenate((Sz,seismo_listz[ii+1][:,1].reshape(-1,1)),axis=0)
-
-
-        #################################################################
-        #######input seismograms for the rest of the events added to the first event
-            
-        for ii in range(n_event-1):
-            sms = sorted(os.listdir(locate_resource('event'+str(ii+2)+'/seismograms/.')))
-            smsz = [f for f in sms if f[-6]=='Z']#Z cmp seismos
-            seismo_listz = [np.loadtxt(locate_resource('event'+str(ii+2)+'/seismograms/'+f)) for f in smsz]
-            
-            for jj in range(len(seismo_listz)):
-                seismo_listz[jj]=seismo_listz[jj][index]
-
-
-            Sze=seismo_listz[0][:,1].reshape(-1,1)
-            for jj in range(len(seismo_listz)-1):
-               Sze=np.concatenate((Sze,seismo_listz[jj+1][:,1].reshape(-1,1)),axis=0)
-               
-            Sz +=Sze
-        ###########################################################
 
 
         Sz=Sz/u_scl #scaling the sum of all seismogram inputs
@@ -308,7 +289,7 @@ class Pinn:
         d_s=np.abs((zl_s-z0_s))/(n_seis-1)#the distance between seismometers
 
         for i in range(len(seismo_listz)):
-          X_S[i*l_sub:(i+1)*l_sub,]=np.concatenate((ax/Lx*np.ones((l_sub,1),dtype=np.float64), \
+            X_S[i*l_sub:(i+1)*l_sub,]=np.concatenate((ax/Lx*np.ones((l_sub,1),dtype=np.float64), \
                                        (z0_s-i*d_s)/Lz*np.ones((l_sub,1),dtype=np.float64),t_spec_sub),axis=1)
 
 
@@ -333,26 +314,6 @@ class Pinn:
         Sx=seismo_listx[0][:,1].reshape(-1,1)
         for ii in range(len(seismo_listx)-1):
             Sx=np.concatenate((Sx,seismo_listx[ii+1][:,1].reshape(-1,1)),axis=0)
-
-        #################################################################
-        #######input seismograms for the rest of the events added to the first event
-            
-        for ii in range(n_event-1):
-            sms = sorted(os.listdir(locate_resource('event'+str(ii+2)+'/seismograms/.')))
-            smsx = [f for f in sms if f[-6]=='X']#X cmp seismos
-            seismo_listx = [np.loadtxt(locate_resource('event'+str(ii+2)+'/seismograms/'+f)) for f in smsx]
-            
-            for jj in range(len(seismo_listx)):
-                seismo_listx[jj]=seismo_listx[jj][index]
-
-
-
-            Sxe=seismo_listx[0][:,1].reshape(-1,1)
-            for jj in range(len(seismo_listx)-1):
-               Sxe=np.concatenate((Sxe,seismo_listx[jj+1][:,1].reshape(-1,1)),axis=0)
-               
-            Sx +=Sxe
-        ###########################################################
 
 
         Sx=Sx/u_scl #scaling the sum of all seismogram inputs
@@ -423,7 +384,7 @@ class Pinn:
 
         with tf.compat.v1.Session() as sess:
               sess.run(tf.compat.v1.global_variables_initializer())
-              alpha_true0=sess.run([alpha_true], feed_dict =feed_dict01 )#note alpha takes two variables but feed_dict01 has three input. but it's ok and won't cause any issues 
+              alpha_true0 = sess.run( [alpha_true], feed_dict = feed_dict01 )#note alpha takes two variables but feed_dict01 has three input. but it's ok and won't cause any issues 
 
         alpha_true0 = alpha_true0[0].reshape((xx.shape))
 
@@ -458,25 +419,27 @@ class Pinn:
 
         bbn=0
         with tf.compat.v1.Session() as sess:
-              sess.run(tf.compat.v1.global_variables_initializer())  
+            sess.run(tf.compat.v1.global_variables_initializer())  
+            report("Initialised TensorFlow variables, beginning epoch loop (after {:.2f}s)".format( duration() ))
+    
+            duration("epoch")
+            for epoch in range(num_epoch):
 
-              start = timeit.default_timer()
-              for epoch in range(num_epoch):
+                sess.run(train_op_Adam, feed_dict = feed_dict1)  
 
-                  sess.run(train_op_Adam, feed_dict = feed_dict1)  
-           
-                  if epoch % 200 == 0:
-                      stop = timeit.default_timer()
-                      loss_val, loss_pde_val, loss_init_disp1_val,loss_init_disp2_val,loss_seism_val,loss_BC_val \
-                      = sess.run([loss, loss_pde, loss_init_disp1,loss_init_disp2,loss_seism,loss_BC], feed_dict = feed_dict1)
+                if epoch % update_interval == 0 or epoch == num_epoch - 1:
+                    if self.print_epoch_increment:
+                        print("")
+                    loss_val, loss_pde_val, loss_init_disp1_val,loss_init_disp2_val,loss_seism_val,loss_BC_val \
+                        = sess.run([loss, loss_pde, loss_init_disp1,loss_init_disp2,loss_seism,loss_BC], feed_dict = feed_dict1)
 
-                      #report('Epoch: ', epoch, ', Loss: ', loss_val, ', Loss_pde: ', loss_pde_val, ', Loss_init_disp1: ', loss_init_disp1_val)
-                      #report(', Loss_init_disp2: ', loss_init_disp2_val,'Loss_seism: ', loss_seism_val,'Loss_stress: ', loss_BC_val)
+                    #report('Epoch: ', epoch, ', Loss: ', loss_val, ', Loss_pde: ', loss_pde_val, ', Loss_init_disp1: ', loss_init_disp1_val)
+                    #report(', Loss_init_disp2: ', loss_init_disp2_val,'Loss_seism: ', loss_seism_val,'Loss_stress: ', loss_BC_val)
 
-                      form = "{epoch:>"+str(len(str(num_epoch)))+"}: Loss: {loss_val:.4f} LossPDE: {loss_pde_val:.4f} LossInitDisp1: {loss_init_disp1_val:.4f} LossInitDisp2: {loss_init_disp2_val:.4f} Loss_seism: {loss_seism_val:.4f} Loss_stress: {loss_BC_val:.4f} [{time:.0f}s]"
+                    form = "{epoch:>"+str(len(str(num_epoch)))+"}: Loss: {loss_val:.4f} LossPDE: {loss_pde_val:.4f} LossInitDisp1: {loss_init_disp1_val:.4f} LossInitDisp2: {loss_init_disp2_val:.4f} Loss_seism: {loss_seism_val:.4f} Loss_stress: {loss_BC_val:.4f} [{time:.0f}s]"
 
-                      report(form.format(
-                        time = stop - start,
+                    report(form.format(
+                        time = duration("epoch"),
                         epoch = epoch,
                         loss_val = loss_val,
                         loss_pde_val = loss_pde_val,
@@ -484,150 +447,174 @@ class Pinn:
                         loss_init_disp2_val = loss_init_disp2_val,
                         loss_seism_val = loss_seism_val,
                         loss_BC_val = loss_BC_val
-                      ))
-                      
-
-
-
-                      ux01=sess.run([ux], feed_dict =feed_dict01 )
-                      uz01=sess.run([uz], feed_dict =feed_dict01 )
-                      ux02=sess.run([ux], feed_dict =feed_dict02 )
-                      uz02=sess.run([uz], feed_dict =feed_dict02 )
-                      uxt=sess.run([ux], feed_dict =feed_dict2 )
-                      uzt=sess.run([uz], feed_dict =feed_dict2 )
-                      uz_seism_pred=sess.run([uz], feed_dict =feed_dict_seism )
-                      ux_seism_pred=sess.run([ux], feed_dict =feed_dict_seism )
-                      alpha0=sess.run([alpha], feed_dict =feed_dict01 )
-                      i=i+1
-                      loss_eval[0,0],loss_eval[0,1],loss_eval[0,2],loss_eval[0,3],loss_eval[0,4],loss_eval[0,5],loss_eval[0,6]\
-                      =epoch,loss_val, loss_pde_val, loss_init_disp1_val,loss_init_disp2_val,loss_seism_val,loss_BC_val
-
-                      loss_rec= np.concatenate((loss_rec,loss_eval),axis=0)
-
-                      #####Defining a new training batch for both PDE and B.C input data
-                      x_vec = np.random.rand(bcxn,1)*ax/Lx
-                      t_vec = np.random.rand(bctn,1)*(t_m-t_st) 
-                      xxb, ttb = np.meshgrid(x_vec, t_vec)
-                      X_BC_t = np.concatenate((xxb.reshape((-1,1)),az/Lz*np.ones((xxb.reshape((-1,1)).shape[0],1)),ttb.reshape((-1,1))),axis=1)
-
-                      bbn=bbn+1
-                      XX = np.concatenate((X_pde[bbn*batch_size:(bbn+1)*batch_size], X_init1,X_init2,X_S,X_BC_t),axis=0)
-                      feed_dict1 = { x: XX[:,0:1], z: XX[:,1:2], t: XX[:,2:3]} # This dictionary is for training
-
-                      U_PINN01=((ux01[0].reshape(xx.shape))**2+(uz01[0].reshape(xx.shape))**2)**0.5
-                      U_PINN02=((ux02[0].reshape(xx.shape))**2+(uz02[0].reshape(xx.shape))**2)**0.5
-                      U_PINNt=((uxt[0].reshape(xx.shape))**2+(uzt[0].reshape(xx.shape))**2)**0.5
-                      U_diff=np.sqrt(U_specx**2+U_specz**2).reshape(xx.shape)-U_PINNt
-                      fig = plt.figure()
-                      plt.contourf(xx*Lx, zz*Lz, U_PINN01,100, cmap='jet')
-                      plt.xlabel('x')
-                      plt.ylabel('z')
-                      plt.title(r'PINNs $U(x,z,t=$'+str(0)+r'$)$')
-                      plt.colorbar()
-                      plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(0)+'.png'), dpi=400)
-                      if option.showplot: plt.show()
-                      plt.close(fig)
-                      fig = plt.figure()
-                      plt.contourf(xx*Lx, zz*Lz, U_PINN02,100, cmap='jet')
-                      plt.xlabel('x')
-                      plt.ylabel('z')
-                      plt.title(r'PINNs $U(x,z,t=$'+str(round(t02-t01, 4))+r'$)$')
-                      plt.colorbar()
-                      plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(round(t02-t01, 4))+'.png'), dpi=400)
-                      if option.showplot: plt.show()
-                      plt.close(fig)
-                      fig = plt.figure()
-                      plt.contourf(xx*Lx, zz*Lz, U_PINNt,100, cmap='jet')
-                      plt.xlabel('x')
-                      plt.ylabel('z')
-                      plt.title(r'PINNs $U(x,z,t=$'+str(round((t_la-t01), 4))+r'$)$')
-                      plt.colorbar()
-                      plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(round((t_la-t01), 4))+'.png'), dpi=400)
-                      if option.showplot: plt.show()
-                      plt.close(fig)
-                      
-                      fig = plt.figure()
-                      plt.contourf(xx*Lx, zz*Lz, U_diff,100, cmap='jet')
-                      plt.xlabel('x')
-                      plt.ylabel('z')
-                      plt.title(r'Total disp. Specfem-PINNs ($t=$'+str(round((t_la-t01), 4))+r'$)$')
-                      plt.colorbar()
-                      plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'pointwise_Error_spec_minus_PINNs_t='+str(round((t_la-t01), 4))+'.png'), dpi=400)
-                      if option.showplot: plt.show()
-                      plt.close(fig)
-                      
-                      fig = plt.figure()
-                      plt.contourf(xx*Lx, zz*Lz, alpha0[0].reshape(xx.shape),100, cmap='jet')
-                      plt.xlabel('x')
-                      plt.ylabel('z')
-                      plt.title(r'Inverted $\alpha$')
-                      plt.colorbar()
-                      plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'inverted_alpha.png') ,dpi=400)
-                      if option.showplot: plt.show()
-                      plt.close(fig)
-                      
-                      fig = plt.figure()
-                      plt.contourf(xx*Lx, zz*Lx, alpha_true0-(alpha0[0].reshape(xx.shape)),100, cmap='jet')
-                      plt.xlabel('x')
-                      plt.ylabel('z')
-                      plt.title(r' $\alpha$ misfit (true-inverted)')
-                      plt.colorbar()
-                      plt.axis('scaled')
-                      plt.savefig(os.path.join(self._outputfolder, 'alpha_misfit.png') ,dpi=400)
-                      if option.showplot: plt.show()
-                      plt.close(fig)
-
-                      fig = plt.figure()
-                      plt.plot(loss_rec[0:,0], loss_rec[0:,4],'g',label='ini_disp2')
-                      plt.plot(loss_rec[0:,0], loss_rec[0:,6],'black',label='B.C')
-                      plt.plot(loss_rec[0:,0], loss_rec[0:,1],'--y',label='Total')
-                      plt.plot(loss_rec[0:,0], loss_rec[0:,2],'r',label='PDE')
-                      plt.plot(loss_rec[0:,0], loss_rec[0:,3],'b',label='ini_disp1')
-                      plt.plot(loss_rec[0:,0], loss_rec[0:,5],'c',label='Seism')
-                      plt.yscale("log")
-                      plt.xlabel('epoch')
-                      plt.ylabel('misfit')
-                      plt.legend()
-                      plt.savefig(os.path.join(self._outputfolder, 'misfit.png'), dpi=400)
-                      if option.showplot: plt.show()
-                      plt.close(fig)
-
-                      
-                      fig = plt.figure()
-                      plt.plot(X_S[600:750,2],Sz[600:750],'ok',mfc='none',label='Input')
-                      plt.plot(X_S[600:750,2],uz_seism_pred[0][600:750],'r',label='PINNs')
-                      plt.legend()
-                      plt.title(r' Vertical Seismogram z='+str(round(az-d_s, 4)))
-                      plt.savefig(os.path.join(self._outputfolder, 'ZSeismograms_compare_z='+str(round(az-d_s, 4))+'.png'), dpi=400)
-                      if option.showplot: plt.show()
-                      plt.close(fig)
-                      
-                   
-                      
-                      fig = plt.figure()
-                      plt.plot(X_S[600:750,2],Sx[600:750],'ok',mfc='none',label='Input')
-                      plt.plot(X_S[600:750,2],ux_seism_pred[0][600:750],'r',label='PINNs')
-                      plt.legend()
-                      plt.title(r' Horizontal Seismogram z='+str(round(az-d_s, 4)))
-                      plt.savefig(os.path.join(self._outputfolder, 'XSeismograms_compare_z='+str(round(az-d_s, 4))+'.png'), dpi=400)
-                      if option.showplot: plt.show()
-                      plt.close(fig)
-                      
-                      
+                    ))
                   
+                    ux01=sess.run([ux], feed_dict =feed_dict01 )
+                    uz01=sess.run([uz], feed_dict =feed_dict01 )
+                    ux02=sess.run([ux], feed_dict =feed_dict02 )
+                    uz02=sess.run([uz], feed_dict =feed_dict02 )
+                    uxt=sess.run([ux], feed_dict =feed_dict2 )
+                    uzt=sess.run([uz], feed_dict =feed_dict2 )
+                    uz_seism_pred=sess.run([uz], feed_dict =feed_dict_seism )
+                    ux_seism_pred=sess.run([ux], feed_dict =feed_dict_seism )
+                    alpha0=sess.run([alpha], feed_dict =feed_dict01 )
+                    i=i+1
+                    loss_eval[0,0],loss_eval[0,1],loss_eval[0,2],loss_eval[0,3],loss_eval[0,4],loss_eval[0,5],loss_eval[0,6]\
+                        =epoch,loss_val, loss_pde_val, loss_init_disp1_val,loss_init_disp2_val,loss_seism_val,loss_BC_val
 
-                      w_f=sess.run(weights)#saving weights 
-                      b_f=sess.run(biases)#saving biases 
-                      w_alph=sess.run(weights0)#saving weights for the inverse NN
-                      b_alph=sess.run(biases0)
-                      with open(os.path.join(self._outputfolder, 'recorded_weights.pickle'), 'wb') as f:
-                           pickle.dump(['The first tensor contains weights, the second biases and the third losses',w_f,b_f,w_alph,b_alph,loss_rec], f)
+                    loss_rec= np.concatenate((loss_rec,loss_eval),axis=0)
 
+                    #####Defining a new training batch for both PDE and B.C input data
+                    x_vec = np.random.rand(bcxn,1)*ax/Lx
+                    t_vec = np.random.rand(bctn,1)*(t_m-t_st) 
+                    xxb, ttb = np.meshgrid(x_vec, t_vec)
+                    X_BC_t = np.concatenate((xxb.reshape((-1,1)),az/Lz*np.ones((xxb.reshape((-1,1)).shape[0],1)),ttb.reshape((-1,1))),axis=1)
+
+                    bbn = bbn + 1
+                    XX = np.concatenate((X_pde[bbn*batch_size:(bbn+1)*batch_size], X_init1,X_init2,X_S,X_BC_t),axis=0)
+                    feed_dict1 = { x: XX[:,0:1], z: XX[:,1:2], t: XX[:,2:3]} # This dictionary is for training
+
+                    U_PINN01=((ux01[0].reshape(xx.shape))**2+(uz01[0].reshape(xx.shape))**2)**0.5
+                    U_PINN02=((ux02[0].reshape(xx.shape))**2+(uz02[0].reshape(xx.shape))**2)**0.5
+                    U_PINNt=((uxt[0].reshape(xx.shape))**2+(uzt[0].reshape(xx.shape))**2)**0.5
+                    U_diff=np.sqrt(U_specx**2+U_specz**2).reshape(xx.shape)-U_PINNt
+
+
+
+
+                    fig = plt.figure()
+                    plt.contourf(xx*Lx, zz*Lz, U_PINN01,100, cmap='jet')
+                    plt.xlabel('x')
+                    plt.ylabel('z')
+                    plt.title(r'PINNs $U(x,z,t=$'+str(0)+r'$)$')
+                    plt.colorbar()
+                    plt.axis('scaled')
+                    plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(0)+'.png'), dpi=400)
+                    if option.showplot: plt.show()
+                    plt.close(fig)
+
+
+                    fig = plt.figure()
+                    plt.contourf(xx*Lx, zz*Lz, U_PINN02,100, cmap='jet')
+                    plt.xlabel('x')
+                    plt.ylabel('z')
+                    plt.title(r'PINNs $U(x,z,t=$'+str(round(t02-t01, 4))+r'$)$')
+                    plt.colorbar()
+                    plt.axis('scaled')
+                    plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(round(t02-t01, 4))+'.png'), dpi=400)
+                    if option.showplot: plt.show()
+                    plt.close(fig)
+
+                    
+                    fig = plt.figure()
+                    plt.contourf(xx*Lx, zz*Lz, U_PINNt,100, cmap='jet')
+                    plt.xlabel('x')
+                    plt.ylabel('z')
+                    plt.title(r'PINNs $U(x,z,t=$'+str(round((t_la-t01), 4))+r'$)$')
+                    plt.colorbar()
+                    plt.axis('scaled')
+                    plt.savefig(os.path.join(self._outputfolder, 'Total_Predicted_dispfield_t='+str(round((t_la-t01), 4))+'.png'), dpi=400)
+                    if option.showplot: plt.show()
+                    plt.close(fig)
+                    
+
+                    fig = plt.figure()
+                    plt.contourf(xx*Lx, zz*Lz, U_diff,100, cmap='jet')
+                    plt.xlabel('x')
+                    plt.ylabel('z')
+                    plt.title(r'Total disp. Specfem-PINNs ($t=$'+str(round((t_la-t01), 4))+r'$)$')
+                    plt.colorbar()
+                    plt.axis('scaled')
+                    plt.savefig(os.path.join(self._outputfolder, 'pointwise_Error_spec_minus_PINNs_t='+str(round((t_la-t01), 4))+'.png'), dpi=400)
+                    if option.showplot: plt.show()
+                    plt.close(fig)
+                    
+                    fig = plt.figure()
+                    plt.contourf(xx*Lx, zz*Lz, alpha0[0].reshape(xx.shape),100, cmap='jet')
+                    plt.xlabel('x')
+                    plt.ylabel('z')
+                    plt.title(r'Inverted $\alpha$')
+                    plt.colorbar()
+                    plt.axis('scaled')
+                    plt.savefig(os.path.join(self._outputfolder, 'inverted_alpha.png') ,dpi=400)
+                    if option.showplot: plt.show()
+                    plt.close(fig)
+                    
+                    fig = plt.figure()
+                    plt.contourf(xx*Lx, zz*Lx, alpha_true0-(alpha0[0].reshape(xx.shape)),100, cmap='jet')
+                    plt.xlabel('x')
+                    plt.ylabel('z')
+                    plt.title(r' $\alpha$ misfit (true-inverted)')
+                    plt.colorbar()
+                    plt.axis('scaled')
+                    plt.savefig(os.path.join(self._outputfolder, 'alpha_misfit.png') ,dpi=400)
+                    if option.showplot: plt.show()
+                    plt.close(fig)
+
+                    fig = plt.figure()
+                    plt.plot(loss_rec[0:,0], loss_rec[0:,4],'g',label='ini_disp2')
+                    plt.plot(loss_rec[0:,0], loss_rec[0:,6],'black',label='B.C')
+                    plt.plot(loss_rec[0:,0], loss_rec[0:,1],'--y',label='Total')
+                    plt.plot(loss_rec[0:,0], loss_rec[0:,2],'r',label='PDE')
+                    plt.plot(loss_rec[0:,0], loss_rec[0:,3],'b',label='ini_disp1')
+                    plt.plot(loss_rec[0:,0], loss_rec[0:,5],'c',label='Seism')
+                    plt.yscale("log")
+                    plt.xlabel('epoch')
+                    plt.ylabel('misfit')
+                    plt.legend()
+                    plt.savefig(os.path.join(self._outputfolder, 'misfit.png'), dpi=400)
+                    if option.showplot: plt.show()
+                    plt.close(fig)
+
+                    
+                    fig = plt.figure()
+                    plt.plot(X_S[600:750,2],Sz[600:750],'ok',mfc='none',label='Input')
+                    plt.plot(X_S[600:750,2],uz_seism_pred[0][600:750],'r',label='PINNs')
+                    plt.legend()
+                    plt.title(r' Vertical Seismogram z='+str(round(az-d_s, 4)))
+                    plt.savefig(os.path.join(self._outputfolder, 'ZSeismograms_compare_z='+str(round(az-d_s, 4))+'.png'), dpi=400)
+                    if option.showplot: plt.show()
+                    plt.close(fig)
+                    
+               
+                    
+                    fig = plt.figure()
+                    plt.plot(X_S[600:750,2],Sx[600:750],'ok',mfc='none',label='Input')
+                    plt.plot(X_S[600:750,2],ux_seism_pred[0][600:750],'r',label='PINNs')
+                    plt.legend()
+                    plt.title(r' Horizontal Seismogram z='+str(round(az-d_s, 4)))
+                    plt.savefig(os.path.join(self._outputfolder, 'XSeismograms_compare_z='+str(round(az-d_s, 4))+'.png'), dpi=400)
+                    if option.showplot: plt.show()
+                    plt.close(fig)
+                    
+
+
+                    save_weights_biases_loses(os.path.join(self._outputfolder, 'recorded_weights.pickle'), sess, weights, biases, weights0, biases0, loss_rec)
+                if self.print_epoch_increment:
+                    print("•", end="")
 
         return True
+
+def save_weights_biases_loses(filename, sess, weights, biases, weights0, biases0, loss_rec):
+    w_f = sess.run(weights) #saving weights 
+    b_f = sess.run(biases) #saving biases 
+    w_alph = sess.run(weights0) #saving weights for the inverse NN
+    b_alph = sess.run(biases0)
+    with open(filename, 'wb') as f:
+        pickle.dump(
+            [
+                'The first tensor contains weights, the second biases and the third losses',
+                w_f,
+                b_f,
+                w_alph,
+                b_alph,
+                loss_rec
+            ],
+            f
+        )
+
+
+
+
+
 
