@@ -17,6 +17,11 @@ $ pinnseis
 
 ```
 
+Repository
+----------
+
+This project is available on github at: [https://github.com/adamcandy/pyPinnSeis](https://github.com/adamcandy/pyPinnSeis).
+
 Contact
 -------
 
