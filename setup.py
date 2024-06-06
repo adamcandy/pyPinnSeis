@@ -7,7 +7,7 @@ with open("Readme.md", "r") as fh:
 
 setuptools.setup(
     name="pinnseis",
-    version="0.1.0",
+    version="1.0.0",
     author="Adam Candy",
     author_email="adam@candylab.org",
     description="Project created with the boilerplate machine, for pyPinnSeis.",
